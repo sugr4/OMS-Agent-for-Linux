@@ -1,5 +1,6 @@
 require 'fluent/test'
 require_relative '../../../source/code/plugins/in_npmd_server'
+require_relative '../../../source/code/plugins/oms_diag_lib'
 require 'socket'
 
 class Logger
@@ -86,6 +87,7 @@ class NPMDServerTest < Test::Unit::TestCase
         _d.instance.is_purged = false
         _d.instance.omsagentUID = Process.euid
         _d.instance.do_capability_check = false
+        _d.instance.dsc_resource_version = "TEST"
         _d
     end
 
@@ -120,6 +122,46 @@ class NPMDServerTest < Test::Unit::TestCase
             end
         end
         _count
+    end
+
+    def parse_diag_logs_from_emits(emits)
+        error_logs = nil
+        assert(emits.length > 0, "At least some data should have been emitted by now")
+        emits.each do |x|
+            if x.last.key?(OMS::Diag::DI_KEY_LOGMESSAGE)
+                error_logs ||= []
+                error_logs << x.last[OMS::Diag::DI_KEY_LOGMESSAGE]
+            end
+        end
+        error_logs
+    end
+
+    def check_presence_of_error_log(error_logs, test_log)
+        found_test_log = false
+        unless error_logs.nil?
+            assert(error_logs.is_a?(Array), "Error logs should be an array")
+            error_logs.each do |x|
+                if x == test_log
+                    found_test_log = true
+                    break
+                end
+            end
+        end
+        found_test_log
+    end
+
+    def check_presence_of_error_log_beginning_with(error_logs, test_prefix)
+        found_test_log = false
+        unless error_logs.nil?
+            assert(error_logs.is_a?(Array), "Error logs should be an array")
+            error_logs.each do |x|
+                if x.start_with?(test_prefix)
+                    found_test_log = true
+                    break
+                end
+            end
+        end
+        found_test_log
     end
 
     # Test01: Check if multiple stale instances are getting killed or not
@@ -306,31 +348,10 @@ class NPMDServerTest < Test::Unit::TestCase
 
         # Step 2
         d.run
-        emits = d.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d.emits)
 
         # Step 3
-        assert(!error_logs.nil?, "There should have been at least some error logs")
-        assert(error_logs.is_a?(Array), "Error logs should be an array")
-        assert(error_logs.length > 0, "There should be at least some error logs")
-        found_sent_log = false
-        error_logs.each do |x|
-            if x.key?("Message") and x["Message"] == "dsc:#{TEST_ERROR_LOG_EMIT}"
-                found_sent_log = true
-                break
-            end
-        end
+        found_sent_log = check_presence_of_error_log(error_logs, TEST_ERROR_LOG_EMIT)
         assert(found_sent_log, "Sent log in test should have been seen");
     end
 
@@ -406,31 +427,10 @@ class NPMDServerTest < Test::Unit::TestCase
 
         # Step 3
         d.run
-        emits = d.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d.emits)
 
         # Step 4
-        assert(!error_logs.nil?, "There should have been at least some error logs")
-        assert(error_logs.is_a?(Array), "Error logs should be an array")
-        assert(error_logs.length > 0, "There should be at least some error logs")
-        found_binary_absent_log = false
-        error_logs.each do |x|
-            if x.key?("Message") and x["Message"] == TEST_ERROR_LOG_BINARY_ABSENT
-                found_binary_absent_log = true
-                break
-            end
-        end
+        found_binary_absent_log = check_presence_of_error_log(error_logs, TEST_ERROR_LOG_BINARY_ABSENT)
         assert_equal(true, found_binary_absent_log, "Binary absent log in test should have been seen");
     end
 
@@ -583,31 +583,10 @@ class NPMDServerTest < Test::Unit::TestCase
 
         # Step 4
         d.run
-        emits = d.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d.emits)
 
         # Step 5
-        assert(!error_logs.nil?, "There should have been at least some error logs")
-        assert(error_logs.is_a?(Array), "Error logs should be an array")
-        assert(error_logs.length > 0, "There should be at least some error logs")
-        found_binary_duplicate_log = false
-        error_logs.each do |x|
-            if x.key?("Message") and x["Message"] == TEST_ERROR_LOG_BINARY_DUPLICATE
-                found_binary_duplicate_log = true
-                break
-            end
-        end
+        found_binary_duplicate_log = check_presence_of_error_log(error_logs, TEST_ERROR_LOG_BINARY_DUPLICATE)
         assert_equal(true, found_binary_duplicate_log, "Binary duplicate log in test should have been seen");
     end
 
@@ -645,31 +624,8 @@ class NPMDServerTest < Test::Unit::TestCase
         d.run
 
         # Step 4
-        emits = d.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
-
-        found_invalid_user_log = false
-        unless error_logs.nil?
-            assert(error_logs.is_a?(Array), "Error logs should be an array")
-            assert(error_logs.length > 0, "There should be at least some error logs")
-            error_logs.each do |x|
-                if x.key?("Message") and x["Message"].include?(TEST_ERROR_LOG_INVALID_USER)
-                    found_invalid_user_log = true
-                    break
-                end
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d.emits)
+        found_invalid_user_log = check_presence_of_error_log_beginning_with(error_logs, TEST_ERROR_LOG_INVALID_USER)
 
         # Step 5
         assert_equal(false, found_invalid_user_log , "Invalid user log should not be seen");
@@ -684,29 +640,8 @@ class NPMDServerTest < Test::Unit::TestCase
         d.run
 
         # Step 8
-        emits = d.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
-        assert(!error_logs.nil?, "There should have been at least some error logs")
-        assert(error_logs.is_a?(Array), "Error logs should be an array")
-        assert(error_logs.length > 0, "There should be at least some error logs")
-        found_invalid_user_log = false
-        error_logs.each do |x|
-            if x.key?("Message") and x["Message"].include?(TEST_ERROR_LOG_INVALID_USER)
-                found_invalid_user_log = true
-                break
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d.emits)
+        found_invalid_user_log = check_presence_of_error_log_beginning_with(error_logs, TEST_ERROR_LOG_INVALID_USER)
 
         # Step 9
         assert_equal(true, found_invalid_user_log , "Invalid user log should have been seen");
@@ -760,30 +695,9 @@ class NPMDServerTest < Test::Unit::TestCase
         d1.run
 
         # Step 5
-        emits = d1.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
-        assert(!error_logs.nil?, "There should have been at least some error logs")
-        assert(error_logs.is_a?(Array), "Error logs should be an array")
-        assert(error_logs.length > 0, "There should be at least some error logs")
-        found_invalid_user_log = false
-        found_error_emit_log = false
-        error_logs.each do |x|
-            if x.key?("Message")
-                found_invalid_user_log = true if x["Message"].include?(TEST_ERROR_LOG_INVALID_USER)
-                found_error_emit_log = true if x["Message"].include?(TEST_ERROR_LOG_EMIT)
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d1.emits)
+        found_invalid_user_log = check_presence_of_error_log_beginning_with(error_logs, TEST_ERROR_LOG_INVALID_USER)
+        found_error_emit_log = check_presence_of_error_log(error_logs, TEST_ERROR_LOG_EMIT)
         assert_equal(false, found_error_emit_log, "Error emit log should not seen when sent via non omsagent user")
 
         # Step 6
@@ -808,30 +722,9 @@ class NPMDServerTest < Test::Unit::TestCase
         d2.run
 
         # Step 10
-        emits = d2.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
-        assert(!error_logs.nil?, "There should have been at least some error logs")
-        assert(error_logs.is_a?(Array), "Error logs should be an array")
-        assert(error_logs.length > 0, "There should be at least some error logs")
-        found_invalid_user_log = false
-        found_error_emit_log = false
-        error_logs.each do |x|
-            if x.key?("Message")
-                found_invalid_user_log = true if x["Message"].include?(TEST_ERROR_LOG_INVALID_USER)
-                found_error_emit_log = true if x["Message"].include?(TEST_ERROR_LOG_EMIT)
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d2.emits)
+        found_invalid_user_log = check_presence_of_error_log_beginning_with(error_logs, TEST_ERROR_LOG_INVALID_USER)
+        found_error_emit_log = check_presence_of_error_log(error_logs, TEST_ERROR_LOG_EMIT)
         assert_equal(true, found_error_emit_log, "Error emit log should be seen when sent via omsagent user")
 
         # Step 11
@@ -880,29 +773,8 @@ class NPMDServerTest < Test::Unit::TestCase
         assert_equal(true, File.exist?(npmdVersionFile), "Error the default npm_version file should be present")
 
         # Step 8
-        emits = d.emits
-        error_logs = nil
-        assert(emits.length > 0, "At least some data should have been emitted by now")
-        emits.each do |x|
-            if x.last.key?("DataItems")
-                x.last["DataItems"].each do |z|
-                    if z.key?("Message")
-                        error_logs ||= []
-                        error_logs << z
-                    end
-                end
-            end
-        end
-        assert(!error_logs.nil?, "There should have been at least some error logs")
-        assert(error_logs.is_a?(Array), "Error logs should be an array")
-        assert(error_logs.length > 0, "There should be at least some error logs")
-        found_cap_not_supported_log = false
-        error_logs.each do |x|
-            if x.key?("Message") and x["Message"].include?(TEST_ERROR_LOG_CAP_NOT_SUPPORTED)
-                found_cap_not_supported_log = true
-                break
-            end
-        end
+        error_logs = parse_diag_logs_from_emits(d.emits)
+        found_cap_not_supported_log = check_presence_of_error_log(error_logs, TEST_ERROR_LOG_CAP_NOT_SUPPORTED)
         assert_equal(true, found_cap_not_supported_log, "Error should have seen filesystem capability not supported distro log")
     end
 
