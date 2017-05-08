@@ -372,7 +372,7 @@ python_ctypes_installed() {
     echo "Checking for ctypes python module ..."
 
     # Check #1: Attempt to create and execute a temporary file importing ctypes
-    tempFile=`mktemp`
+    tempFile=`mktemp --tmpdir=$PWD` 
 
     cat <<EOF > $tempFile
 #! /usr/bin/python
