@@ -2,9 +2,6 @@ language: c
 dist: trusty   # Travis build machine is Ubuntu Trusty 14.04 x64
 sudo: required # A sudo enabled, full VM is used for building instead of a docker container
 
-git:
-  submodules: false
-
 before_install:
   - sudo apt-get update -qq
   # Pre-reqs for building omsagent and omi
@@ -20,24 +17,15 @@ before_install:
 
 install:
   - cd ../..
-  - git clone https://github.com/Microsoft/Build-OMS-Agent-for-Linux.git Microsoft/Build-OMS-Agent-for-Linux
-  - cd Microsoft/Build-OMS-Agent-for-Linux
-  # change url from ssh to https for submodules, travis-ci cannot download a submodule that isn’t on a public url
-  - sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules 
-  - git submodule update --init --recursive dsc omi opsmgr-kits pal auoms scxcore-kits
-  - git clone https://github.com/Microsoft/OMS-Agent-for-Linux.git omsagent 
-  - cd omsagent
-  # change url from ssh to https for submodules ruby and fluentd
-  - sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules 
-  - git submodule update --init --recursive
+  - git config --global 'url.https://github.com/.insteadOf' 'git@github.com:'
+  - git clone --recursive https://github.com/Microsoft/Build-OMS-Agent-for-Linux.git Microsoft/Build-OMS-Agent-for-Linux
 
 before_script:
-  - cd ..
+  - cd Microsoft/Build-OMS-Agent-for-Linux 
   - git checkout master && git submodule foreach git checkout master
-  - cd omsagent
-  # PR validation during check-in will be setup in github in the settings section of our repo
-  - if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then git fetch origin refs/pull/$TRAVIS_PULL_REQUEST/head ; git checkout FETCH_HEAD; fi 
-  - cd build
+  - rm -rf omsagent
+  - cp ../OMS-Agent-for-Linux omsagent
+  - cd omsagent/build 
   # pwd: /home/travis/build/Microsoft/Build-OMS-Agent-for-Linux/omsagent/build
   # Since 'build' is a keyword for travis-CI, change Makefile to substitute 'omsagent/build' instead of 'build'
   - sed -i 's/(subst \/build,,$(CURDIR))/(subst omsagent\/build,omsagent,$(CURDIR))/' Makefile 
